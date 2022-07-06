@@ -41,11 +41,11 @@ class A1Env():
          # set mode to pb.DIRECT ,providing the fastest, non-visual connection
         self.client = pb.connect(pb.GUI)
 
-        pb.setGravity(0, 0, -10, physicsClientId=self.client)
+        pb.setGravity(0, 0, -9.8, physicsClientId=self.client)
         pb.setAdditionalSearchPath(pybullet_data.getDataPath())
         
         self.planeId = pb.loadURDF("plane.urdf")
-        self.robotid = pb.loadURDF("a1/a1.urdf",basePosition=[0,0,0.4])
+        self.robotid = pb.loadURDF("a1/a1.urdf",basePosition=[0,0,0.5])
 
         self.init_pos, self.int_ori = pb.getBasePositionAndOrientation(self.robotid)
         self.joint_id2name, self.joint_ids = self._select_joints()
@@ -101,7 +101,7 @@ class A1Env():
         joint_states =  self.get_joint_states()
         link_states = self.get_link_states()
 
-        trunk_pos, trunk_ori = link_states[0][0:2] # tuple(3), tuple(4)
+        trunk_pos, trunk_ori = pb.getBasePositionAndOrientation(self.robotid) # tuple(3), tuple(4)
 
         if incl_current_pos:
             observation.extend(trunk_pos)
@@ -111,23 +111,25 @@ class A1Env():
         for joint in joint_states:
             joint_angle = joint[0]
             observation.append(joint_angle)
+        
+        # print(f"Observation +joint angle, len {len(observation)}")
+
+        trunk_vel, trunk_ang_vel = pb.getBaseVelocity(self.robotid) # tuple(3), tuple(3)
+        observation.extend(trunk_vel)
+        observation.extend(trunk_ang_vel)
 
         # print(f"Observation +joint angle, len {len(observation)}")
+
         for link_id, link in enumerate(link_states):
-            if link_id == self.link_name2id["trunk"]:
-                trunk_vel, trunk_ang_vel = link[6:] # tuple(3), tuple(3)
-                observation.extend(trunk_vel)
-                observation.extend(trunk_ang_vel)
-            else:
-                link_ang_vel = link[-1] # tuple(3)
-                observation.extend(link_ang_vel)
+            link_ang_vel = link[-1] # tuple(3)
+            observation.extend(link_ang_vel)
+        
         return observation
 
     def get_link_states(self):
         
-
         link_states = pb.getLinkStates(self.robotid, self.link_ids, computeLinkVelocity=1)
-        # print(f"link states type {type(link_states)}, len {len(link_states)}")
+        print(f"link states type {type(link_states)}, len {len(link_states)}")
         to_log(self.log, "Link States", link_states,header="link_states")
 
         return link_states
@@ -163,9 +165,9 @@ class A1Env():
         if not only_mesh:
             link_ids = list(range(len(shape_info)))
         else:
-            for id, link in enumerate(shape_info):
-                if link[2] == MESH_GEOMENTRY_TYPE:
-                    link_ids.append(id)
+            for link in shape_info:
+                if link[2] == MESH_GEOMENTRY_TYPE and link[1] != -1:
+                    link_ids.append(link[1])
         
         return link_ids
 
