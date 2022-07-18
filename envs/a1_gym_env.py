@@ -10,7 +10,7 @@ from gym import Env, spaces
 from robots.a1 import  A1
 
 class A1GymEnv(Env):
-    def __init__(self, task, is_render, args, log, ) -> None:
+    def __init__(self, task, is_render, args, log, motor_control_mode="Torque" ) -> None:
 
          # set mode to pb.DIRECT ,providing the fastest, non-visual connection
         
@@ -18,7 +18,6 @@ class A1GymEnv(Env):
         self.is_render = is_render
         self.args = args
         self.log = log
-        
 
         if self.is_render:
             self.client = bullet_client.BulletClient(connection_mode=pb.GUI)
@@ -28,7 +27,7 @@ class A1GymEnv(Env):
         self.client.setGravity(0, 0, -9.8)
         self.client.setAdditionalSearchPath(pybullet_data.getDataPath())
         
-        self.robot = A1(self.client, args, log)
+        self.robot = A1(self.client, motor_control_mode, args, log)
         self.planeId = self.client.loadURDF("plane.urdf")
         
 
@@ -69,14 +68,25 @@ class A1GymEnv(Env):
         self.task.update(self)
         
     def _build_action_space(self):
-
+        # All limits defined according to urdf file
         joint_limits = self.robot.get_joint_limits()
-
-        #low = np.zeros(self.robot.num_joints)
-        high = joint_limits[:, 2]
-        print(high)
-        low = - high
-        action_space = spaces.Box(low, high, dtype=np.float32)
+        print(f"Motor Control mode {self.robot.motor_control_mode}")
+        if self.robot.motor_control_mode == "Torque":
+            #low = np.zeros(self.robot.num_joints)
+            
+            high = joint_limits[:, 2]
+            low = - high
+            action_space = spaces.Box(low, high, dtype=np.float32)
+        elif self.robot.motor_control_mode == "Position":
+            high = joint_limits[:, 1]
+            low = joint_limits[:, 0]
+            action_space = spaces.Box(low, high, dtype=np.float32)
+        elif self.robot.motor_control_mode == "Velocity":
+            high = joint_limits[:, 3]
+            low = - high
+            action_space = spaces.Box(low, high, dtype=np.float32)
+        else:
+            raise ValueError
         return action_space
 
     def _build_observation_space(self,):
@@ -113,10 +123,10 @@ class A1GymEnv(Env):
         high.extend(trunk_ang_vel_high)
         low.extend(trunk_ang_vel_low)
 
-        trunk_ang_vel_high = [200] * 3 * 12
-        trunk_ang_vel_low = [-200] * 3 * 12
-        high.extend(trunk_ang_vel_high)
-        low.extend(trunk_ang_vel_low)
+        link_ang_vel_high = [200] * 3 * 12
+        link_ang_vel_low = [-200] * 3 * 12
+        high.extend(link_ang_vel_high)
+        low.extend(link_ang_vel_low)
 
         high=np.array(high)
         low=np.array(low)

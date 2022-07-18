@@ -38,7 +38,7 @@ def build_env(args, log, enable_rendering=False):
 
     task = WalkAlongX()
 
-    env = A1GymEnv(task=task, is_render=enable_rendering, args=args, log=log)
+    env = A1GymEnv(task=task, is_render=enable_rendering, args=args, log=log, motor_control_mode=args.motor_control_mode)
 
     return env
 def parse_arguements():
@@ -51,7 +51,7 @@ def parse_arguements():
     parser.add_argument('--max_episode_steps', "-mes", dest="max_episode_steps", default=1000, type=int, help='maximum steps per episode')
     parser.add_argument('--visualize', "-v", dest="visualize", action="store_true", help='To flip rendering behaviour')
     parser.add_argument("--randomise_terrain", "-rt", dest="randomise_terrain", default=False, type=bool, help="to setup a randommized terrain")
-    parser.add_argument("--motor_control_mode", "-mcm", dest="motor_control_mode",  default="position", choices=["position", "torque", "hybrid"], type=str, help="to set motor control mode")
+    parser.add_argument("--motor_control_mode", "-mcm", dest="motor_control_mode",  default="torque", choices=["position", "torque", "velocity"], type=str, help="to set motor control mode")
 
     parser.add_argument('--author', "-au", dest="author", default="rpanackal", type=str, help='name of author')
     parser.add_argument('--exp_suffix', "-s", dest="exp_suffix", default="", type=str, help='appends to experiment name')
@@ -64,6 +64,7 @@ def parse_arguements():
     args = parser.parse_args()
     args.log = args.log.upper()
     args.motor_control_mode = args.motor_control_mode.capitalize()
+    #args.total_timesteps = int(args.total_timesteps)
     return args
 
 def main():

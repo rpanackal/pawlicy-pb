@@ -35,6 +35,7 @@ class A1(object):
     def __init__(
         self,
         client,
+        motor_control_mode,
         args, 
         log,
         _self_collision_enabled : bool = False,
@@ -48,6 +49,7 @@ class A1(object):
         self._self_collision_enabled = _self_collision_enabled
         self._on_rack = _on_rack
         self._incl_current_pos = _incl_current_pos
+        self.motor_control_mode = motor_control_mode
         
         self.robotid = self._load_urdf()
         self.joint_id2name, self.joint_ids = self._select_joints()
@@ -157,9 +159,17 @@ class A1(object):
 
     def take_action(self, action):
         self._last_action = action
+        if self.motor_control_mode == "Torque":
+            controlMode = self.client.TORQUE_CONTROL
+        elif self.motor_control_mode == "Position":
+            controlMode = self.client.POSITION_CONTROL
+        elif self.motor_control_mode == "Velocity":
+            controlMode = self.client.VELOCITY_CONTROL
+        else:
+            raise ValueError
         self.client.setJointMotorControlArray(self.robotid, 
                                     self.joint_ids,
-                                    self.client.TORQUE_CONTROL,
+                                    controlMode,
                                     forces=action)
         self.client.stepSimulation()
         self.update_states()

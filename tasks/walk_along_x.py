@@ -1,4 +1,5 @@
 import numpy as np
+from pyparsing import Forward
 #from pawlicy.envs.terrains import constants as terrain_constants 
 
 class WalkAlongX(object):
@@ -9,7 +10,7 @@ class WalkAlongX(object):
                 # energy_weight=0.0005,
                 shake_weight: float = 0.005,
                 drift_weight: float = 2.0,
-                action_cost_weight: float = 0.5, 
+                action_cost_weight: float = 0.02, 
                 # deviation_weight: float = 1,
                 enable_roll_limit : bool = True,
                 roll_threshold: float = np.pi * 1/2,
@@ -41,7 +42,7 @@ class WalkAlongX(object):
         self._env = env
         self._init_base_pos = env.robot.GetBasePosition()
         self._current_base_pos = env.robot.GetBasePosition()
-        # self._last_base_pos = self._current_base_pos
+        self._last_base_pos = self._current_base_pos
         
         self._current_base_vel = env.robot.GetBaseVelocity()
         # self._alive_time_reward = 0
@@ -55,7 +56,7 @@ class WalkAlongX(object):
         """Updates the internal state of the task.
         Evoked after call to a1.A1.Step(), ie after action takes effect in simulation
         """
-        # self.last_base_pos = self._current_base_pos
+        self._last_base_pos = self._current_base_pos
         self._current_base_pos = env.robot.GetBasePosition()
 
         self._current_base_vel = env.robot.GetBaseVelocity()
@@ -70,58 +71,80 @@ class WalkAlongX(object):
             If the robot base becomes unstable (based on orientation), the episode
             terminates early.
         """
-        return not self.is_healthy(env)
+        return not self.is_healthy
 
-    def reward(self, env):
-        """Get the reward without side effects."""
-        # del env
-        # # the far the better..
-        x_velocity_reward = self._current_base_vel[0]
+    # def reward(self, env):
+    #     """Get the reward without side effects."""
+    #     # del env
+    #     # # the far the better..
+    #     velocity_reward = self._current_base_vel[0]
 
         
-        # y_deviation_cost = self._deviation_weight * self.current_base_pos[1] ** 2 
+    #     # y_deviation_cost = self._deviation_weight * self.current_base_pos[1] ** 2 
 
-        # total = x_velocity_reward + self._alive_time_reward \
-        #         - action_cost - y_deviation_cost
+    #     # total = x_velocity_reward + self._alive_time_reward \
+    #     #         - action_cost - y_deviation_cost
 
-        # the far the better..
-        forward_reward = self._current_base_pos[0] - self._init_base_pos[0]
-        # Cap the forward reward if a cap is set.
-        forward_reward = min(forward_reward, self._forward_reward_cap)
-        # Rewarded if moving forward, else give only 20% of actual reward
-        forward_reward = forward_reward * (self._distance_weight if forward_reward > 0 else self._distance_weight * 0.2)
+    #     # the far the better..
+    #     forward_reward = self._current_base_pos[0] - self._init_base_pos[0]
+    #     # Cap the forward reward if a cap is set.
+    #     forward_reward = min(forward_reward, self._forward_reward_cap)
+    #     # Rewarded if moving forward, else give only 20% of actual reward
+    #     forward_reward = forward_reward * (self._distance_weight if forward_reward > 0 else self._distance_weight * 0.2)
 
-        # Cost of executing action
-        action_cost = self._action_cost_weight * np.linalg.norm(self._last_action) / 12
-        #action_cost = action_cost * self._action_cost_weight
+    #     # Cost of executing action
+    #     action_cost = self._action_cost_weight * np.linalg.norm(self._last_action) / 12
+    #     #action_cost = action_cost * self._action_cost_weight
 
-        # Penalty for sideways translation.
-        drift_reward = -abs(self._current_base_pos[1])
-        drift_reward = drift_reward * self._drift_weight
+    #     # Penalty for sideways translation.
+    #     drift_reward = -abs(self._current_base_pos[1])
+    #     drift_reward = drift_reward * self._drift_weight
 
-        # # Penalty for sideways rotation of the body.
-        # orientation = env.robot.GetBaseOrientation()
-        # rot_matrix = env.pybullet_client.getMatrixFromQuaternion(orientation)
-        # local_up_vec = rot_matrix[6:]
-        # shake_reward = -abs(np.dot(np.asarray([1, 1, 0]), np.asarray(local_up_vec)))
-        # # Penalty for Energy consumption
-        # energy_reward = -np.abs(np.dot(env.robot.GetMotorTorques(), env.robot.GetMotorVelocities())) * env.sim_time_step
-        # objectives = [forward_reward, energy_reward, drift_reward, shake_reward]
-        # weighted_objectives = [o * w for o, w in zip(objectives, self._objective_weights)]
-        reward = forward_reward - action_cost + drift_reward + x_velocity_reward
+    #     # # Penalty for sideways rotation of the body.
+    #     # orientation = env.robot.GetBaseOrientation()
+    #     # rot_matrix = env.pybullet_client.getMatrixFromQuaternion(orientation)
+    #     # local_up_vec = rot_matrix[6:]
+    #     # shake_reward = -abs(np.dot(np.asarray([1, 1, 0]), np.asarray(local_up_vec)))
+    #     # # Penalty for Energy consumption
+    #     # energy_reward = -np.abs(np.dot(env.robot.GetMotorTorques(), env.robot.GetMotorVelocities())) * env.sim_time_step
+    #     # objectives = [forward_reward, energy_reward, drift_reward, shake_reward]
+    #     # weighted_objectives = [o * w for o, w in zip(objectives, self._objective_weights)]
+    #     reward = forward_reward - action_cost + drift_reward + x_velocity_reward
                     
-                    # drift_reward * self._drift_weight + \
-                    # shake_reward * self._shake_weight + \
+    #                 # drift_reward * self._drift_weight + \
+    #                 # shake_reward * self._shake_weight + \
         
-        if self.is_healthy(env):
-            reward += self.healthy_reward
-        return reward 
+    #     if self.is_healthy(env):
+    #         reward += self.healthy_reward
+    #     return reward 
     
-    def is_healthy(self, env):
+    def reward(self, env):
+
+        velocity_reward = np.dot([1, -1, 0], self._current_base_vel)
+        forward_reward = self._current_base_pos[0] - self._init_base_pos[0]
+        displacement_reward = self._current_base_pos[0] - self._last_base_pos[0]
+
+        action_reward = -self._action_cost_weight * np.linalg.norm(self._last_action) / 12
+        drift_reward = -abs(self._current_base_pos[1])
+        #orientation_reward = -sum(abs(self._current_base_ori_euler - self._init_base_ori_euler))
+
+        reward = velocity_reward + forward_reward + displacement_reward + action_reward \
+                + drift_reward #+ orientation_reward
+
+        #print("Reward", reward)
+        return reward
+
+    @property
+    def is_healthy(self):
         # Check for counterclockwise rotation along x-axis and y-axis (in radians)
+        # if self.enable_roll_limit and (
+        #     np.any(self._current_base_ori_euler[0:2] < -self.roll_threshold) or \
+        #     np.any(self._current_base_ori_euler[0:2] > self.roll_threshold)
+        #     ):
+        #     return False
         if self.enable_roll_limit and (
-            np.any(self._current_base_ori_euler[0:2] < -self.roll_threshold) or \
-            np.any(self._current_base_ori_euler[0:2] > self.roll_threshold)
+            self._current_base_ori_euler[0] < -self.roll_threshold or \
+            self._current_base_ori_euler[0] > self.roll_threshold
             ):
             return False
         # Isuue - needs to account for heightfield data
@@ -152,16 +175,16 @@ class WalkAlongX(object):
             #     return False
 
             # Issue - needs to account for heightfield data
-            if self.enable_z_limit:
-                # z_upper_limit = self._init_base_pos[2] + self.healthy_z_limit * 2
-                # z_lower_limit = self._init_base_pos[2] - self.healthy_z_limit
-                # # Random terrains don't have fixed heights in every run. Hence initial position of
-                # # the robot is generally higher than usual. Taking that under consideration
-                # if env.world_dict["ground"]["type"] != "plain":
-                #     z_lower_limit -= 0.1
-                # Robot shouldn't be below the limit
-                if self._current_base_pos[2] < 0.02:
-                    # print("z_fail: Current=", self._current_base_pos[2], ",\tLimit=", z_lower_limit)
-                    return False
+            # if self.enable_z_limit:
+            #     # z_upper_limit = self._init_base_pos[2] + self.healthy_z_limit * 2
+            #     # z_lower_limit = self._init_base_pos[2] - self.healthy_z_limit
+            #     # # Random terrains don't have fixed heights in every run. Hence initial position of
+            #     # # the robot is generally higher than usual. Taking that under consideration
+            #     # if env.world_dict["ground"]["type"] != "plain":
+            #     #     z_lower_limit -= 0.1
+            #     # Robot shouldn't be below the limit
+            #     if self._current_base_pos[2] < 0.02:
+            #         # print("z_fail: Current=", self._current_base_pos[2], ",\tLimit=", z_lower_limit)
+            #         return False
         return True
 
