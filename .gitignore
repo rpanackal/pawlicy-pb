@@ -1,11 +1,8 @@
-guide/
-assets/
 
-bullet_env.py
-myworld.py
-simplecar.urdf
-simpleplane.urdf
-test.py
-tutorial.py
+agents/
+old/
+sensors/
 
+*.egg-info
 *.log
+__pycache__
