@@ -69,17 +69,18 @@ class A1GymEnv(Env):
         
     def _build_action_space(self):
         # All limits defined according to urdf file
-        joint_limits = self.robot.get_joint_limits()
+        joint_limits = self.robot._joint_limits
         print(f"Motor Control mode {self.robot.motor_control_mode}")
         if self.robot.motor_control_mode == "Torque":
-            #low = np.zeros(self.robot.num_joints)
-            
-            high = joint_limits[:, 2]
+            OBSERVED_TORQUE_LIMIT = 5.7
+            high = [OBSERVED_TORQUE_LIMIT]*self.robot.num_joints
             low = - high
             action_space = spaces.Box(low, high, dtype=np.float32)
         elif self.robot.motor_control_mode == "Position":
             high = joint_limits[:, 1]
             low = joint_limits[:, 0]
+            # print(high)
+            # print(low)
             action_space = spaces.Box(low, high, dtype=np.float32)
         elif self.robot.motor_control_mode == "Velocity":
             high = joint_limits[:, 3]
@@ -123,10 +124,15 @@ class A1GymEnv(Env):
         high.extend(trunk_ang_vel_high)
         low.extend(trunk_ang_vel_low)
 
-        link_ang_vel_high = [200] * 3 * 12
-        link_ang_vel_low = [-200] * 3 * 12
-        high.extend(link_ang_vel_high)
-        low.extend(link_ang_vel_low)
+        # link_ang_vel_high = [200] * 3 * 12
+        # link_ang_vel_low = [-200] * 3 * 12
+        # high.extend(link_ang_vel_high)
+        # low.extend(link_ang_vel_low)
+
+        motor_vel_low = [-100] * 12
+        motor_vel_high = [100] * 12
+        high.extend(motor_vel_high)
+        low.extend(motor_vel_low)
 
         high=np.array(high)
         low=np.array(low)

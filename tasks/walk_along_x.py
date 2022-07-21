@@ -9,14 +9,14 @@ class WalkAlongX(object):
                 distance_weight: float = 1.0,
                 # energy_weight=0.0005,
                 shake_weight: float = 0.005,
-                drift_weight: float = 2.0,
+                drift_weight: float = 1.5,
                 action_cost_weight: float = 0.02, 
                 # deviation_weight: float = 1,
                 enable_roll_limit : bool = True,
                 roll_threshold: float = np.pi * 1/2,
                 pitch_threshold: float = 0.8,
                 enable_z_limit: bool = True,
-                healthy_z_limit: float = 0.05,
+                healthy_z_limit: float = 0.15,
                 healthy_reward=1.0,
                 ):
         """Initializes the task."""
@@ -120,15 +120,18 @@ class WalkAlongX(object):
     
     def reward(self, env):
 
-        velocity_reward = np.dot([1, -1, 0], self._current_base_vel)
+        # bug : -ve velocity along y is rewarded
+        # velocity_reward = np.dot([1, -1, 0], self._current_base_vel)
+        x_velocity_reward = self._current_base_vel[0]
         forward_reward = self._current_base_pos[0] - self._init_base_pos[0]
         displacement_reward = self._current_base_pos[0] - self._last_base_pos[0]
 
+        y_velocity_reward = -abs(self._current_base_vel[1])
         action_reward = -self._action_cost_weight * np.linalg.norm(self._last_action) / 12
         drift_reward = -abs(self._current_base_pos[1])
         #orientation_reward = -sum(abs(self._current_base_ori_euler - self._init_base_ori_euler))
 
-        reward = velocity_reward + forward_reward + displacement_reward + action_reward \
+        reward = x_velocity_reward + y_velocity_reward + forward_reward + displacement_reward + action_reward \
                 + drift_reward #+ orientation_reward
 
         #print("Reward", reward)
@@ -143,12 +146,12 @@ class WalkAlongX(object):
         #     ):
         #     return False
         if self.enable_roll_limit and (
-            self._current_base_ori_euler[0] < -self.roll_threshold or \
-            self._current_base_ori_euler[0] > self.roll_threshold
+            np.any(self._current_base_ori_euler) < -self.roll_threshold or \
+            np.any(self._current_base_ori_euler) > self.roll_threshold
             ):
             return False
         # Isuue - needs to account for heightfield data
-        if self.enable_z_limit and self._current_base_pos[2] < self.healthy_z_limit:
+        if self.enable_z_limit and (self._current_base_pos[2] < self.healthy_z_limit):
             return False
         # if self.enable_roll_limit and (self._current_base_ori_euler[0] < -self.healthy_roll_limit or \
         #     self._current_base_ori_euler[0] > self.healthy_roll_limit):

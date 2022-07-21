@@ -25,7 +25,10 @@ def to_log(logger, desc="", msg="", level="DEBUG", is_tabular=True, header="firs
     }
 
     if is_tabular:
-        logger.debug(f"{desc} : \n{tabulate(msg, headers=headers[header])}")
+        if header in {"joint_infos", "shape_infos"}:
+            logger.info(f"{desc} : \n{tabulate(msg, headers=headers[header])}")
+        else:
+            logger.debug(f"{desc} : \n{tabulate(msg, headers=headers[header])}")
     else:
         logger.debug(f"{desc} : {msg}")
 
@@ -45,3 +48,21 @@ def map_to_minus_pi_to_pi(angle):
     elif mapped_angle < -math.pi:
         mapped_angle += 2 * math.pi
     return mapped_angle
+
+def MapToMinusPiToPi(angles):
+    """Maps a list of angles to [-pi, pi].
+
+    Args:
+      angles: A list of angles in rad.
+
+    Returns:
+      A list of angle mapped to [-pi, pi].
+    """
+    mapped_angles = copy.deepcopy(angles)
+    for i in range(len(angles)):
+        mapped_angles[i] = math.fmod(angles[i], 2 * math.pi)
+        if mapped_angles[i] >= math.pi:
+            mapped_angles[i] -= 2 * math.pi
+        elif mapped_angles[i] < -math.pi:
+            mapped_angles[i] += 2 * math.pi
+    return mapped_angles

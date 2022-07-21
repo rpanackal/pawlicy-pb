@@ -4,7 +4,7 @@ from typing import Union
 import numpy as np
 #import pybullet as pb
 from robots import constants
-from utils import to_log, map_to_minus_pi_to_pi
+from utils import to_log, MapToMinusPiToPi
 
 class A1(object):
     link_name2id = {
@@ -38,24 +38,28 @@ class A1(object):
         motor_control_mode,
         args, 
         log,
-        _self_collision_enabled : bool = False,
-        _on_rack : bool = False,
-        _incl_current_pos : bool = False
+        self_collision_enabled : bool = False,
+        on_rack : bool = False,
+        incl_current_pos : bool = False,
         ) -> None:
         
         self.client = client
         self.args = args
         self.log = log
-        self._self_collision_enabled = _self_collision_enabled
-        self._on_rack = _on_rack
-        self._incl_current_pos = _incl_current_pos
+        self._self_collision_enabled = self_collision_enabled
+        self._on_rack = on_rack
+        self._incl_current_pos = incl_current_pos
         self.motor_control_mode = motor_control_mode
         
+        self._observation_noise_stdev=constants.SENSOR_NOISE_STDDEV
+        self._motor_direction = constants.JOINT_DIRECTIONS
+        self._motor_offset = constants.JOINT_OFFSETS
         self.robotid = self._load_urdf()
         self.joint_id2name, self.joint_ids = self._select_joints()
         self.link_ids = self._select_links()
         self.num_joints = len(self.joint_ids)
         self.num_links = len(self.link_ids)
+        self._joint_limits = self.get_joint_limits()
 
         self._log_general()
         self.disable_motor()
@@ -158,19 +162,29 @@ class A1(object):
         self._last_action = None
 
     def take_action(self, action):
+        max_force = self._joint_limits[:, 2]
         self._last_action = action
         if self.motor_control_mode == "Torque":
-            controlMode = self.client.TORQUE_CONTROL
+            self.client.setJointMotorControlArray(self.robotid, 
+                                    jointIndices=self.joint_ids,
+                                    controlMode = self.client.TORQUE_CONTROL,
+                                    forces=max_force)
         elif self.motor_control_mode == "Position":
-            controlMode = self.client.POSITION_CONTROL
+            self.client.setJointMotorControlArray(self.robotid, 
+                                    self.joint_ids,
+                                    controlMode=self.client.POSITION_CONTROL,
+                                    targetPositions=action,
+                                    forces=max_force)
         elif self.motor_control_mode == "Velocity":
             controlMode = self.client.VELOCITY_CONTROL
+            self.client.setJointMotorControlArray(self.robotid, 
+                                    self.joint_ids,
+                                    controlMode=self.client.VELOCITY_CONTROL,
+                                    targetVelocities=action,
+                                    forces=max_force)
         else:
             raise ValueError
-        self.client.setJointMotorControlArray(self.robotid, 
-                                    self.joint_ids,
-                                    controlMode,
-                                    forces=action)
+        
         self.client.stepSimulation()
         self.update_states()
 
@@ -185,17 +199,17 @@ class A1(object):
             trunk_pos = self.GetBasePosition() # tuple(3)
             observation.extend(trunk_pos)
         
-        trunk_ori = self.GetTrueBaseOrientation() # tuple(4), quat
+        trunk_ori = self.GetBaseOrientation() # tuple(4), quat
         observation.extend(trunk_ori)
         #print(f"Observation trunk pos + ori, len {len(observation)}")
         
         
-        joint_angles = self.GetTrueMotorAngles() # list(self.num_joints)
+        joint_angles = self.GetMotorAngles() # list(self.num_joints)
         observation.extend(joint_angles)
         #print(f"Observation +joint angles, len {len(observation)}")
 
         trunk_vel = self.GetBaseVelocity() # tuple(3)
-        trunk_ang_vel = self.GetTrueBaseRollPitchYawRate() # tuple(3)
+        trunk_ang_vel = self.GetBaseRollPitchYawRate() # tuple(3)
         observation.extend(trunk_vel)
         observation.extend(trunk_ang_vel)
         #print(f"Observation +joint trunk lin and ang vel , len {len(observation)}")
@@ -203,8 +217,13 @@ class A1(object):
         # for link_id, link in enumerate(link_states):
         #     link_ang_vel = link[-1] # tuple(3), worldLinkAngularVelocity
         #     observation.extend(link_ang_vel)
-        link_ang_vels = self.GetRawLinkRollPitchYawRates() # tuple(3)
-        observation.extend(link_ang_vels)
+
+        # link_ang_vels = self.GetRawLinkRollPitchYawRates() # tuple(3)
+        # observation.extend(link_ang_vels)
+
+        motor_vels = self.GetMotorVelocities()
+        observation.extend(motor_vels)
+
         #print(f"Observation + link ang vel , len {len(observation)}")
         return np.asarray(observation)
 
@@ -246,11 +265,12 @@ class A1(object):
         to_log(self.log, "Visual Shape info", shape_info,header="shape_infos")
     
     def disable_motor(self):
-        self.client.setJointMotorControlArray(self.robotid,
-                                self.joint_ids,
-                                controlMode=self.client.VELOCITY_CONTROL,
-                                forces=np.zeros(len(self.joint_ids)).tolist())
-    
+        if self.motor_control_mode == "Torque":
+            self.client.setJointMotorControlArray(self.robotid,
+                                    self.joint_ids,
+                                    controlMode=self.client.VELOCITY_CONTROL,
+                                    forces=np.zeros(len(self.joint_ids)).tolist())
+
 
 
     def GetBasePosition(self):
@@ -271,7 +291,19 @@ class A1(object):
         velocity = self.client.getBaseVelocity(self.robotid)[0]
         to_log(self.log, desc="Base Linear Velocity", msg=velocity, is_tabular=False)
         return velocity
-    
+
+    def GetBaseOrientation(self):
+        """Get the orientation of quadruped's base, represented as quaternion.
+
+        This function mimicks the noisy sensor reading and adds latency.
+        Returns:
+        The orientation of quadruped's base polluted by noise and latency.
+        """
+        true_orientation = self.GetTrueBaseOrientation()
+        return self._AddSensorNoise(
+            true_orientation,
+            self._observation_noise_stdev[3])
+
     def GetTrueBaseOrientation(self):
         """Get the orientation of quadruped's base, represented as quaternion.
         
@@ -290,6 +322,19 @@ class A1(object):
             orientationB=self._init_base_orientation_inv)
         return base_orientation
 
+    def GetBaseRollPitchYaw(self):
+        """Get quadruped's base orientation in euler angle in the world frame.
+
+        This function mimicks the noisy sensor reading and adds latency.
+        Returns:
+        A tuple (roll, pitch, yaw) of the base in world frame polluted by noise
+        and latency.
+        """
+        roll_pitch_yaw = self.GetTrueBaseRollPitchYaw()
+        return self._AddSensorNoise(
+            roll_pitch_yaw, 
+            self._observation_noise_stdev[3])
+
     def GetTrueBaseRollPitchYaw(self):
         """Get quadruped's base orientation in euler angle in the world frame.
 
@@ -299,6 +344,18 @@ class A1(object):
         orientation = self.GetTrueBaseOrientation()
         roll_pitch_yaw = self.client.getEulerFromQuaternion(orientation)
         return np.asarray(roll_pitch_yaw)
+
+    def GetBaseRollPitchYawRate(self):
+        """Get the rate of orientation change of the quadruped's base in euler angle.
+
+        This function mimicks the noisy sensor reading and adds latency.
+        Returns:
+        rate of (roll, pitch, yaw) change of the quadruped's base polluted by noise
+        and latency.
+        """
+        return self._AddSensorNoise(
+            self.GetTrueBaseRollPitchYawRate(),
+            self._observation_noise_stdev[4])
 
     def GetTrueBaseRollPitchYawRate(self):
         """Get the rate of orientation change of the quadruped's base in euler angle.
@@ -333,6 +390,20 @@ class A1(object):
             self.client.getQuaternionFromEuler([0, 0, 0]))
         return np.asarray(relative_velocity)
     
+    def GetMotorAngles(self):
+        """Gets the motor angles.
+
+        This function mimicks the noisy sensor reading and adds latency. The motor
+        angles that are delayed, noise polluted, and mapped to [-pi, pi].
+
+        Returns:
+        Motor angles polluted by noise and latency, mapped to [-pi, pi].
+        """
+        motor_angles = self._AddSensorNoise(
+            self.GetTrueMotorAngles(),
+            self._observation_noise_stdev[0])
+        return MapToMinusPiToPi(motor_angles)
+
     def GetTrueMotorAngles(self):
         """Gets the motor angles at the current moment, mapped to [-pi, pi].
 
@@ -342,13 +413,25 @@ class A1(object):
 
         motor_angles = []
 
-        for joint in self._joint_states:
-            joint_angle = map_to_minus_pi_to_pi(joint[0]) # scalar, jointPosition
-            motor_angles.append(joint_angle)
+        # for joint in self._joint_states:
+        #     joint_angle = map_to_minus_pi_to_pi(joint[0]) # scalar, jointPosition
+        #     motor_angles.append(joint_angle)
+        motor_angles = [state[0] for state in self._joint_states]
+        motor_angles = np.multiply(np.asarray(motor_angles) - np.asarray(self._motor_offset), self._motor_direction)
         #print(f"Motor ANgles {len(motor_angles)} {motor_angles}")
         return motor_angles
     
-    
+    def GetMotorVelocities(self):
+        """Get the velocity of all eight motors.
+
+        This function mimicks the noisy sensor reading and adds latency.
+        Returns:
+        Velocities of all eight motors polluted by noise and latency.
+        """
+        return self._AddSensorNoise(
+            self.GetTrueMotorVelocities(),
+            self._observation_noise_stdev[1])
+
     def GetTrueMotorVelocities(self):
         """Get the velocity of all eight motors.
 
@@ -356,7 +439,7 @@ class A1(object):
         Velocities of all eight motors.
         """
         motor_velocities = [state[1] for state in self._joint_states]
-        # motor_velocities = np.multiply(motor_velocities, self._motor_direction)
+        motor_velocities = np.multiply(motor_velocities, self._motor_direction)
         return motor_velocities
     
     # def GetTrueLinkOrientations(self):
@@ -408,4 +491,8 @@ class A1(object):
         to_log(self.log, "Link Raw Angular Velocity", np.asarray(ang_velocities).reshape(12, 3), header="link_angular_velocities")
         return np.asarray(ang_velocities)
 
-    
+    def _AddSensorNoise(self, sensor_values, noise_stdev):
+        if noise_stdev <= 0:
+            return sensor_values
+        observation = sensor_values + np.random.normal(scale=noise_stdev, size=sensor_values.shape)
+        return observation

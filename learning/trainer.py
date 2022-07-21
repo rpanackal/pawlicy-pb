@@ -114,7 +114,7 @@ class Trainer:
         self._env = TimeLimit(self._env, self._max_episode_steps)
         # To monitor training stats
         self._env = Monitor(self._env)
-        #check_env(self._env)
+        check_env(self._env)
         # a simple vectorized wrapper
         self._env = DummyVecEnv([lambda: self._env])
         # Normalizes the observation space and rewards
